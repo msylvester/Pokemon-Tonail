@@ -6,8 +6,8 @@ logging.basicConfig(level=logging.INFO)
 
 
 class GameController:
-    def __init__(self, rom_path, emulation_speed=1.0):
-        self.pyboy = PyBoy(rom_path)
+    def __init__(self, rom_path, emulation_speed=1.0, headless=False):
+        self.pyboy = PyBoy(rom_path, window="null" if headless else "SDL2")
         if not self.pyboy:
             raise RuntimeError("Failed to initialize PyBoy with the given ROM.")
 
@@ -28,11 +28,6 @@ class GameController:
     def close(self):
         self.pyboy.stop()
         logging.info("Emulator stopped.")
-
-    # implement the locatin
-    # x_pos = self.pyboy.get_memory_value(0xD361)
-    # y_pos = self.pyboy.get_memory_value(0xD362)
-    # map_n = self.pyboy.get_memory_value(0xD35E)
 
     def get_game_coords(self):
         return (self.read_m(0xD362), self.read_m(0xD361), self.read_m(0xD35E))
@@ -69,7 +64,7 @@ class GameController:
         if action in action_map:
             button = action_map[action]
             self._press_button(button, hold_ticks=20, release_ticks=2)
-            #logging.info("Performed action: %s", action)
+            # logging.info("Performed action: %s", action)
         else:
             raise ValueError(f"Unknown action: {action}")
 

@@ -66,8 +66,8 @@ def run_ai_mode(environment, episode_id=None, previous_episode_id=None, episode_
     return episode_id
 
 
-def run_manual_mode():
-    environment = env_red()
+def run_manual_mode(env_red):
+    environment = env_red
     environment.reset()
     done = False
     while not done:
@@ -80,7 +80,7 @@ def main():
 
     try:
         if args.manual:
-            run_manual_mode()
+            run_manual_mode(environment)
         else:
             # change to None to start with blank q table
             initial_q_state = None

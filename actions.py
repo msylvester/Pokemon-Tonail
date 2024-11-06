@@ -1,15 +1,11 @@
-# actions.py
-from enum import Enum
-
-
-class Actions(Enum):
-    UP = "UP"
-    DOWN = "DOWN"
-    LEFT = "LEFT"
-    RIGHT = "RIGHT"
-    ACTION1 = "A"  # Replace with actual action name
-    ACTION2 = "B"  # Replace with actual action name
+class Actions:
+    UP = 0
+    DOWN = 1
+    LEFT = 2
+    RIGHT = 3
+    ACTION1 = 4  # Corresponds to 'A' action
+    ACTION2 = 5  # Corresponds to 'B' action
 
     @classmethod
     def list(cls):
-        return list(map(lambda c: c.value, cls))
+        return [cls.UP, cls.DOWN, cls.LEFT, cls.RIGHT, cls.ACTION1, cls.ACTION2]

@@ -34,7 +34,7 @@ def run_ai_mode(environment, model, episode_id=None, episode_length=1000):
         action, _states = model.predict(obs, deterministic=True)
 
         # Step in the environment using the action
-        obs, reward, done, _ = environment.step(action)
+        obs, reward, done, _ = environment.step(action, manual=False)
 
         if done:
             break
@@ -48,36 +48,12 @@ def run_ai_mode(environment, model, episode_id=None, episode_length=1000):
     return episode_id
 
 
-
-# def run_ai_mode(environment, model, episode_id=None, episode_length=1000):
-#     # Generate new episode ID if none provided
-#     if episode_id is None:
-#         episode_id = generate_timestamped_id()
-
-#     obs = environment.reset()
-#     step = 0
-#     while step < episode_length:
-#         step += 1
-#         # Run environment with integer-based Actions
-#         action = Actions(model.predict(obs, deterministic=True)[0])  # Convert to Actions enum
-#         obs, reward, done, _ = environment.step(action)
-
-
-#         if done:
-#             break
-
-#     # Save model at the end of each episode
-#     model.save(f"checkpoints/ppo_agent_{episode_id}.zip")
-#     environment.save_episode_stats(episode_id)
-#     return episode_id
-
-
 def run_manual_mode():
     environment = env_red()
     environment.reset()
     done = False
     while not done:
-        next_state, reward, done, _ = environment.step(manual=True)
+        next_state, reward, done, _ = environment.step(action=False, manual=True)
 
 
 def main():

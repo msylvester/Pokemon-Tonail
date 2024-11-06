@@ -8,6 +8,7 @@ from config import ROM_PATH, EMULATION_SPEED
 import random
 import os
 import pickle
+import json
 class env_red(gym.Env):  # Inherit from gym.Env for compatibility
     def __init__(self, learning_rate=0.05, discount_factor=0.9):
         super(env_red, self).__init__()
@@ -52,19 +53,33 @@ class env_red(gym.Env):  # Inherit from gym.Env for compatibility
         self.previous_state = initial_state
         return initial_state, {}
 
-    def step(self, action):
+    def step(self, action, manual=False):
+        if not manual: 
+            self.current_step += 1
+
+            # Perform the action in the game environment
+            self.controller.perform_action(action)
+            self.controller.pyboy.tick()
+
+            # Check battle status
+            self.battle = self.controller.is_in_battle()
+            position = self.controller.get_global_coords()
+            if len(position) == 2:
+                position = (*position, 0)  # Ensure position has shape (3,)
+
+            step_reward = self.calculate_reward(position)
+            self.total_reward += step_reward
+
+            next_state = {
+                "position": np.array(position, dtype=np.int32),
+                "battle": 1 if self.battle else 0,
+            }
+
+            done = self.current_step >= 300 or self.battle
+            return next_state, step_reward, done, False, {}
         self.current_step += 1
-
-        # Perform the action in the game environment
-        self.controller.perform_action(action)
         self.controller.pyboy.tick()
-
-        # Check battle status
-        self.battle = self.controller.is_in_battle()
         position = self.controller.get_global_coords()
-        if len(position) == 2:
-            position = (*position, 0)  # Ensure position has shape (3,)
-
         step_reward = self.calculate_reward(position)
         self.total_reward += step_reward
 
@@ -74,8 +89,25 @@ class env_red(gym.Env):  # Inherit from gym.Env for compatibility
         }
 
         done = self.current_step >= 300 or self.battle
-        return next_state, step_reward, done, False, {}
+        return next_state, step_reward, False, False
+
+
     def save_episode_stats(self, episode_id):
+        # Define the stats you want to save for each episode
+        stats = {
+            "total_reward": self.total_reward,
+            "steps": self.current_step,
+            "visited_coords": list(self.visited_coords),
+            # Add any other relevant stats
+        }
+        
+        # Ensure the directory exists
+        os.makedirs("episodes", exist_ok=True)
+        
+        # Save stats as a JSON file
+        with open(f"episodes/episode_{episode_id}.json", "w") as f:
+            json.dump(stats, f, indent=4)
+    # def save_episode_stats(self, episode_id):
         # Define what you want to save for each episode
         stats = {
             "total_reward": self.total_reward,

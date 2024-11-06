@@ -1,6 +1,8 @@
-from ai_agent import AIAgent
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv
 from env import env_red
 from utils import generate_timestamped_id
+from actions import Actions
 import argparse
 import os
 
@@ -20,50 +22,49 @@ def parse_arguments():
     )
     return parser.parse_args()
 
-
-def run_ai_mode(environment, episode_id=None, previous_episode_id=None, episode_length=1000):
-    ai_agent = AIAgent()
-
-    # Load previous episode's checkpoint if exists
-    if previous_episode_id:
-        checkpoint = f"checkpoints/agent_state_{previous_episode_id}.pkl"
-        if os.path.exists(checkpoint):
-            ai_agent.load_state(checkpoint)
-
+def run_ai_mode(environment, model, episode_id=None, episode_length=1000):
     # Generate new episode ID if none provided
     if episode_id is None:
         episode_id = generate_timestamped_id()
 
-    state = environment.reset()
+    obs = environment.reset()
     step = 0
     while step < episode_length:
         step += 1
-        if step % 100 == 0:  # Save checkpoint less frequently
-            ai_agent.save_state(f"checkpoints/agent_state_{episode_id}.pkl")
+        action, _states = model.predict(obs, deterministic=True)  # action is already an integer
 
-        action = ai_agent.select_action(state)
-        next_state, reward, done, _ = environment.step(action, False)
+        # Pass the integer action directly to the environment
+        obs, reward, done, _ = environment.step(action)
 
-        # debug logs
-        if step % 1000 == 0 or step == episode_length - 1:  # Every 1000 steps or at episode end
-            current_pos = next_state["position"]
-            target_pos = (309, 99)  # Target coordinates
-            distance = ((current_pos[0] - target_pos[0])**2 + 
-                       (current_pos[1] - target_pos[1])**2)**0.5
-            
-            print(f"\nEpisode step {step}/{episode_length}:")
-            print(f"Total reward: {environment.total_reward:.2f}")
-            print(f"Distance to target: {distance:.2f}")
-            print(f"Current position: {current_pos}")
-
-        state = next_state
         if done:
             break
 
-    # Final save at episode end
-    ai_agent.save_state(f"checkpoints/agent_state_{episode_id}.pkl")
+    # Save model at the end of each episode
+    model.save(f"checkpoints/ppo_agent_{episode_id}.zip")
     environment.save_episode_stats(episode_id)
     return episode_id
+
+# def run_ai_mode(environment, model, episode_id=None, episode_length=1000):
+#     # Generate new episode ID if none provided
+#     if episode_id is None:
+#         episode_id = generate_timestamped_id()
+
+#     obs = environment.reset()
+#     step = 0
+#     while step < episode_length:
+#         step += 1
+#         # Run environment with integer-based Actions
+#         action = Actions(model.predict(obs, deterministic=True)[0])  # Convert to Actions enum
+#         obs, reward, done, _ = environment.step(action)
+
+
+#         if done:
+#             break
+
+#     # Save model at the end of each episode
+#     model.save(f"checkpoints/ppo_agent_{episode_id}.zip")
+#     environment.save_episode_stats(episode_id)
+#     return episode_id
 
 
 def run_manual_mode():
@@ -76,25 +77,20 @@ def run_manual_mode():
 
 def main():
     args = parse_arguments()
-    environment = env_red()
+    environment = DummyVecEnv([lambda: env_red()])
 
     try:
         if args.manual:
             run_manual_mode()
         else:
-            # change to None to start with blank q table
-            initial_q_state = None
+            # Initialize PPO model
+            model = PPO("MultiInputPolicy", environment, verbose=1)
 
-            previous_id = initial_q_state
             for episode in range(args.episodes):
                 print(f"\nStarting episode {episode + 1}/{args.episodes}")
                 episode_id = generate_timestamped_id()
-                previous_id = run_ai_mode(
-                    environment,
-                    episode_id=episode_id,
-                    previous_episode_id=previous_id,
-                    episode_length=args.episode_length,
-                )
+                run_ai_mode(environment, model, episode_id=episode_id, episode_length=args.episode_length)
+
     except KeyboardInterrupt:
         print("Program interrupted. Stopping emulator...")
     finally:

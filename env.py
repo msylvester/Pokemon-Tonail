@@ -1,160 +1,90 @@
-from abc import ABC, abstractmethod
-import os
-import pickle
-from game_controller import GameController
-from config import ROM_PATH, EMULATION_SPEED
-from global_map import local_to_global
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
+from game_controller import GameController
 from collections import defaultdict
-from actions import (
-    Actions,
-)  # Replace `actions` with the actual module name if different
+from actions import Actions
+from config import ROM_PATH, EMULATION_SPEED
+import random
 
-
-class AbstractEnvironment(ABC):
-    @abstractmethod
-    def reset(self):
-        """Reset the environment and return the initial state."""
-        pass
-
-    @abstractmethod
-    def step(self, action):
-        """Take an action in the environment and return the next state, reward, done, and additional info."""
-        pass
-
-    def get_game_coords(self):
-        return (self.read_m(0xD362), self.read_m(0xD361), self.read_m(0xD35E))
-
-    def get_global_coords(self):
-        x_pos, y_pos, map_n = self.get_game_coords()
-        return local_to_global(y_pos, x_pos, map_n)
-
-
-class env_red(AbstractEnvironment):
+class env_red(gym.Env):  # Inherit from gym.Env for compatibility
     def __init__(self, learning_rate=0.05, discount_factor=0.9):
+        super(env_red, self).__init__()
+        
         self.controller = GameController(ROM_PATH, EMULATION_SPEED)
         self.q_table = defaultdict(lambda: np.zeros(len(Actions.list())))
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
 
-        self.reset()
+        # Define action and observation space
+        self.action_space = spaces.Discrete(len(Actions.list()))
+        self.observation_space = spaces.Dict({
+            "position": spaces.Box(low=0, high=500, shape=(3,), dtype=np.int32),
+            "battle": spaces.Discrete(2),
+        })
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
+        # Set the seed if provided for reproducibility
+        if seed is not None:
+            np.random.seed(seed)
+            random.seed(seed)
+
+        # Initialize the game state
         self.controller.load_state()
-
-        self.visited_coords = set()  # Track visited coordinates
+        self.visited_coords = set()
         self.battle = self.controller.is_in_battle()
         self.battle_reward_applied = False
         self.current_step = 0
-        self.total_reward = 0  # Track total reward for episode
+        self.total_reward = 0
         self.steps_to_battle = None
         self.last_distance_reward = None
 
+        # Get initial position with the correct shape
         position = self.controller.get_global_coords()
+        if len(position) == 2:
+            position = (*position, 0)  # Add a third coordinate if missing
+
         initial_state = {
-            "position": position,
-            "battle": self.battle,
+            "position": np.array(position, dtype=np.int32),
+            "battle": 1 if self.battle else 0,
         }
         self.previous_state = initial_state
-        return initial_state
+        return initial_state, {}
 
-    def calculate_reward(self, position):
-        position_tuple = tuple(position)
-        target_position = (309, 99)
-
-        # Distance-based reward
-        current_distance = np.sqrt((position[0] - target_position[0])**2 + 
-                                (position[1] - target_position[1])**2)
-        distance_reward = 1000.0 / (current_distance + 1)  # Add 1 to avoid division by zero
-
-        # Print first distance reward or significant changes
-        if self.last_distance_reward is None:
-            print(f"\nInitial distance reward: {distance_reward:.2f}")
-            self.last_distance_reward = distance_reward
-        else:
-            change = abs(distance_reward - self.last_distance_reward)
-            if change >= 5.0:
-                print(f"\nSignificant distance change! Old: {self.last_distance_reward:.2f}, New: {distance_reward:.2f}")
-                self.last_distance_reward = distance_reward
-
-
-        # Exploration reward (reduced importance)
-        if position_tuple not in self.visited_coords:
-            exploration_reward = 1
-            self.visited_coords.add(position_tuple)
-            print(f"\nNew area explored! Position: {position}, Battle: {self.battle}")
-            print(f"Exploration reward: {exploration_reward}")
-        else:
-            exploration_reward = -2
-
-        # Battle reward (kept the same)
-        if not self.battle_reward_applied and self.battle:
-            battle_reward = 10000
-            self.battle_reward_applied = True
-            print(f"\nBattle found! Position: {position}, Battle: {self.battle}")
-            print(f"Battle reward: {battle_reward}")
-        else:
-            battle_reward = 0
-
-        reward = distance_reward + exploration_reward + battle_reward
-
-        return reward
-
-    def step(self, action=None, manual=False):
+    def step(self, action):
         self.current_step += 1
 
-        if not manual and action is not None:
-            self.controller.perform_action(action)
-
+        # Perform the action in the game environment
+        self.controller.perform_action(action)
         self.controller.pyboy.tick()
 
-        if self.controller.is_in_battle():
-            self.battle = True
-            if self.steps_to_battle is None:
-                self.steps_to_battle = self.current_step
-        else:
-            self.battle = False
-
+        # Check battle status
+        self.battle = self.controller.is_in_battle()
         position = self.controller.get_global_coords()
+        if len(position) == 2:
+            position = (*position, 0)  # Ensure position has shape (3,)
+
         step_reward = self.calculate_reward(position)
         self.total_reward += step_reward
 
         next_state = {
-            "position": position,
-            "battle": self.battle,
+            "position": np.array(position, dtype=np.int32),
+            "battle": 1 if self.battle else 0,
         }
 
-        done = False
+        done = self.current_step >= 300 or self.battle
+        return next_state, step_reward, done, False, {}
 
-        if not manual:
-            self.update_q_table(self.previous_state, action, next_state, step_reward)
+    def calculate_reward(self, position):
+        # # Example reward calculation
+        # target_position = (100, 100)  # Example target coordinates
+        # distance = np.linalg.norm(np.array(position) - np.array(target_position))
 
-        self.previous_state = next_state
+        # # Calculate a reward inversely proportional to the distance to target
+        # reward = max(100 - distance, 0)  # Reward decreases as distance increases
 
-        return next_state, step_reward, done, {}
-
-    def update_q_table(self, state, action, next_state, reward):
-        """Updates the Q-table for the current environment state and reward."""
-        state, next_state = tuple(state.items()), tuple(next_state.items())
-        action_index = Actions.list().index(action)
-        best_next_action_value = np.max(self.q_table[next_state])
-        self.q_table[state][action_index] += self.learning_rate * (
-            reward
-            + self.discount_factor * best_next_action_value
-            - self.q_table[state][action_index]
-        )
-
-    def save_episode_stats(self, episode_id):
-        """Save episode statistics."""
-        stats = {
-            "visited_coords": list(self.visited_coords),
-            "steps_to_battle": self.steps_to_battle,
-            "total_steps": self.current_step,
-            "total_reward": self.total_reward,  # Add this line
-        }
-        os.makedirs("episodes", exist_ok=True)
-        with open(f"episodes/episode_{episode_id}.pkl", "wb") as f:
-            pickle.dump(stats, f)
+        # Always return a numerical value (even if it’s 0)
+        return 1
 
     def close(self):
         self.controller.close()

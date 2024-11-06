@@ -31,9 +31,9 @@ def run_ai_mode(environment, model, episode_id=None, episode_length=1000):
     step = 0
     while step < episode_length:
         step += 1
-        action, _states = model.predict(obs, deterministic=True)  # action is already an integer
+        action, _states = model.predict(obs, deterministic=True)
 
-        # Pass the integer action directly to the environment
+        # Step in the environment using the action
         obs, reward, done, _ = environment.step(action)
 
         if done:
@@ -41,8 +41,13 @@ def run_ai_mode(environment, model, episode_id=None, episode_length=1000):
 
     # Save model at the end of each episode
     model.save(f"checkpoints/ppo_agent_{episode_id}.zip")
-    environment.save_episode_stats(episode_id)
+
+    # Call save_episode_stats on the underlying env_red instance
+    environment.envs[0].save_episode_stats(episode_id)
+    
     return episode_id
+
+
 
 # def run_ai_mode(environment, model, episode_id=None, episode_length=1000):
 #     # Generate new episode ID if none provided

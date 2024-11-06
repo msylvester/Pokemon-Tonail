@@ -6,7 +6,8 @@ from collections import defaultdict
 from actions import Actions
 from config import ROM_PATH, EMULATION_SPEED
 import random
-
+import os
+import pickle
 class env_red(gym.Env):  # Inherit from gym.Env for compatibility
     def __init__(self, learning_rate=0.05, discount_factor=0.9):
         super(env_red, self).__init__()
@@ -74,7 +75,21 @@ class env_red(gym.Env):  # Inherit from gym.Env for compatibility
 
         done = self.current_step >= 300 or self.battle
         return next_state, step_reward, done, False, {}
-
+    def save_episode_stats(self, episode_id):
+        # Define what you want to save for each episode
+        stats = {
+            "total_reward": self.total_reward,
+            "steps": self.current_step,
+            "visited_coords": list(self.visited_coords),
+            # Add any other relevant stats
+        }
+        
+        # Ensure the directory exists
+        os.makedirs("episodes", exist_ok=True)
+        
+        # Save stats as a pickle file
+        with open(f"episodes/episode_{episode_id}.pkl", "wb") as f:
+            pickle.dump(stats, f)
     def calculate_reward(self, position):
         # # Example reward calculation
         # target_position = (100, 100)  # Example target coordinates

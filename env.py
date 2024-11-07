@@ -9,6 +9,7 @@ import random
 import os
 import pickle
 import json
+
 class env_red(gym.Env):  # Inherit from gym.Env for compatibility
     def __init__(self, learning_rate=0.05, discount_factor=0.9):
         super(env_red, self).__init__()
@@ -17,7 +18,8 @@ class env_red(gym.Env):  # Inherit from gym.Env for compatibility
         self.q_table = defaultdict(lambda: np.zeros(len(Actions.list())))
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
-
+        self.seen_coords = set()
+        self.visited_coords = set()  # Initialize visited_coords here
         # Define action and observation space
         self.action_space = spaces.Discrete(len(Actions.list()))
         self.observation_space = spaces.Dict({
@@ -33,14 +35,14 @@ class env_red(gym.Env):  # Inherit from gym.Env for compatibility
 
         # Initialize the game state
         self.controller.load_state()
-        self.visited_coords = set()
+    
         self.battle = self.controller.is_in_battle()
         self.battle_reward_applied = False
         self.current_step = 0
         self.total_reward = 0
         self.steps_to_battle = None
         self.last_distance_reward = None
-
+        self.seen_coords = set()
         # Get initial position with the correct shape
         position = self.controller.get_global_coords()
         if len(position) == 2:
@@ -107,31 +109,60 @@ class env_red(gym.Env):  # Inherit from gym.Env for compatibility
         # Save stats as a JSON file
         with open(f"episodes/episode_{episode_id}.json", "w") as f:
             json.dump(stats, f, indent=4)
-    # def save_episode_stats(self, episode_id):
-        # Define what you want to save for each episode
-        stats = {
-            "total_reward": self.total_reward,
-            "steps": self.current_step,
-            "visited_coords": list(self.visited_coords),
-            # Add any other relevant stats
-        }
+
+    def battle_reward(self):
+        """
+        Returns a reward if the agent has entered a new battle.
+        The reward is given only once per battle encounter.
+        """
+        if self.battle and not self.battle_reward_applied:
+            self.battle_reward_applied = True  # Mark that reward has been applied
+            return 100  # Example battle reward
+        elif not self.battle:
+            # Reset battle reward flag when not in battle
+            self.battle_reward_applied = False
+        return 0
+    
+    def exploration_reward(self):
+        position = tuple(self.controller.get_global_coords())
         
-        # Ensure the directory exists
-        os.makedirs("episodes", exist_ok=True)
+        if position not in self.seen_coords:
+            self.seen_coords.add(position)
+         
+            return .1  # Reward for discovering a new location
         
-        # Save stats as a pickle file
-        with open(f"episodes/episode_{episode_id}.pkl", "wb") as f:
-            pickle.dump(stats, f)
+        return 0  # No reward if the location was already visited
+    def directional_reward(self, position):
+        """
+        Calculates a reward based on the distance to a target position (339, 95).
+        The closer the agent is to this target, the higher the reward.
+        """
+    
+        target_position = np.array([338,94])  # Assuming a 3D position with z = 0
+
+        current_position = np.array(position)
+
+        # Calculate Euclidean distance to target
+        distance = np.linalg.norm(current_position - target_position)
+       
+        # Define the maximum reward and a scaling factor for proximity
+        max_reward = 10  # Max reward when at target
+        reward = max(max_reward - distance * 0.1, 0)  # Reward decreases with distance
+ 
+        return reward
+     
     def calculate_reward(self, position):
-        # # Example reward calculation
-        # target_position = (100, 100)  # Example target coordinates
-        # distance = np.linalg.norm(np.array(position) - np.array(target_position))
+        # Sum up all the rewards
+        battle_reward = self.battle_reward()
+        exploration_reward = self.exploration_reward()
 
-        # # Calculate a reward inversely proportional to the distance to target
-        # reward = max(100 - distance, 0)  # Reward decreases as distance increases
+        dir_reward =self.directional_reward(self.controller.get_global_coords())
+        #directional_reward = self.directional_reward(self.controller.get_global_coords())
+        # Print each reward for better diagnostics
+      
+        # Return the total reward for the current step
+        return battle_reward + dir_reward
 
-        # Always return a numerical value (even if it’s 0)
-        return 1
 
     def close(self):
         self.controller.close()

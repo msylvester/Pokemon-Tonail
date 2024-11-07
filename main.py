@@ -5,6 +5,8 @@ from utils import generate_timestamped_id
 from actions import Actions
 import argparse
 import os
+from stream_agent_wrapper import StreamWrapper
+from config import USER_NAME
 
 
 def parse_arguments():
@@ -34,7 +36,7 @@ def run_ai_mode(environment, model, episode_id=None, episode_length=1000):
         action, _states = model.predict(obs, deterministic=True)
 
         # Step in the environment using the action
-        obs, reward, done, _ = environment.step(action, manual=False)
+        obs, reward, done, _ = environment.step(action)
 
         if done:
             break
@@ -58,8 +60,18 @@ def run_manual_mode():
 
 def main():
     args = parse_arguments()
-    environment = DummyVecEnv([lambda: env_red()])
 
+#     env = StreamWrapper(
+#     evn(env_conf), 
+#     stream_metadata = { # All of this is part is optional
+#         "user": USER_NAME, # choose your own username
+#         "env_id": rank, # environment identifier
+#         "color": "#447799", # choose your color :)
+#         "extra": "", # any extra text you put here will be displayed
+#     }
+# )
+# env.reset(seed=(seed + rank))
+    environment = DummyVecEnv([lambda: env_red()])
     try:
         if args.manual:
             run_manual_mode()
